@@ -1,0 +1,1343 @@
+// eduflow-cms-complete.tsx
+// Complete EduFlow Course Management System - All code in one file
+
+// === PACKAGE.JSON ===
+/*
+{
+  "name": "eduflow-cms",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "next": "14.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "tailwindcss": "^3.3.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "clsx": "^2.0.0",
+    "lucide-react": "^0.294.0",
+    "class-variance-authority": "^0.7.0",
+    "@prisma/client": "^5.5.0",
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "next-auth": "^4.23.0",
+    "bcryptjs": "^2.4.3",
+    "recharts": "^2.8.0",
+    "@uploadthing/react": "^6.4.1",
+    "uploadthing": "^6.4.1",
+    "zod": "^3.22.0",
+    "@hookform/resolvers": "^3.3.0",
+    "react-hook-form": "^7.47.0",
+    "next-themes": "^0.2.1"
+  },
+  "devDependencies": {
+    "prisma": "^5.5.0",
+    "@types/bcryptjs": "^2.4.0"
+  }
+}
+*/
+
+// === PRISMA SCHEMA ===
+/*
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  role          UserRole  @default(STUDENT)
+  password      String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts      Account[]
+  sessions      Session[]
+  courses       Course[]  @relation("CourseInstructor")
+  enrollments   Enrollment[]
+  submissions   Submission[]
+
+  @@map("users")
+}
+
+model Course {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  thumbnail   String?
+  isPublished Boolean     @default(false)
+  price       Float?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  
+  instructorId String     @map("instructor_id")
+  instructor   User       @relation("CourseInstructor", fields: [instructorId], references: [id])
+  
+  modules     Module[]
+  enrollments Enrollment[]
+  assignments Assignment[]
+
+  @@map("courses")
+}
+
+model Module {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  order       Int
+  isPublished Boolean  @default(false)
+  courseId    String   @map("course_id")
+  
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+
+  @@map("modules")
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  content     String?
+  videoUrl    String?  @map("video_url")
+  order       Int
+  isPublished Boolean  @default(false)
+  moduleId    String   @map("module_id")
+  
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("lessons")
+}
+
+model Assignment {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  dueDate     DateTime?   @map("due_date")
+  maxScore    Int         @default(100) @map("max_score")
+  courseId    String      @map("course_id")
+  
+  course      Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+
+  @@map("assignments")
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  courseId  String   @map("course_id")
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+  progress  Float    @default(0)
+  
+  user      User     @relation(fields: [userId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+  submissions Submission[]
+
+  @@unique([userId, courseId])
+  @@map("enrollments")
+}
+
+model Submission {
+  id           String   @id @default(cuid())
+  assignmentId String   @map("assignment_id")
+  enrollmentId String   @map("enrollment_id")
+  content      String?
+  fileUrl      String?  @map("file_url")
+  submittedAt  DateTime @default(now()) @map("submitted_at")
+  score        Float?
+  gradedAt     DateTime? @map("graded_at")
+  feedback     String?
+  
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id])
+
+  @@map("submissions")
+}
+
+enum UserRole {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+*/
+
+// === ENVIRONMENT VARIABLES ===
+/*
+# .env.local.example
+DATABASE_URL="postgresql://username:password@localhost:5432/eduflow"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="your-secret-key-here"
+GOOGLE_CLIENT_ID="your-google-client-id"
+GOOGLE_CLIENT_SECRET="your-google-client-secret"
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+UPLOADTHING_SECRET="your-uploadthing-secret"
+UPLOADTHING_APP_ID="your-uploadthing-app-id"
+*/
+
+// === CONFIGURATION FILES ===
+
+// tailwind.config.js
+const tailwindConfig = {
+  darkMode: ["class"],
+  content: [
+    './pages/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+    './app/**/*.{ts,tsx}',
+    './src/**/*.{ts,tsx}',
+  ],
+  theme: {
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
+      },
+    },
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "#2563eb",
+          foreground: "#ffffff",
+        },
+        secondary: {
+          DEFAULT: "#059669",
+          foreground: "#ffffff",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate")],
+}
+
+// next.config.js
+const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
+  images: {
+    domains: ['uploadthing.com', 'lh3.googleusercontent.com'],
+  },
+}
+
+// === UTILITY FUNCTIONS ===
+
+// lib/utils.ts
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+
+export function formatPrice(price: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(price)
+}
+
+// === DATABASE CLIENT ===
+
+// lib/prisma.ts
+import { PrismaClient } from '@prisma/client'
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
+}
+
+export const prisma = globalForPrisma.prisma ?? new PrismaClient()
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+
+// === AUTHENTICATION CONFIGURATION ===
+
+// lib/auth.ts
+import { NextAuthOptions } from "next-auth"
+import { PrismaAdapter } from "@next-auth/prisma-adapter"
+import CredentialsProvider from "next-auth/providers/credentials"
+import GoogleProvider from "next-auth/providers/google"
+import GitHubProvider from "next-auth/providers/github"
+import bcrypt from "bcryptjs"
+
+export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
+  session: {
+    strategy: "jwt",
+  },
+  providers: [
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email }
+        })
+
+        if (!user || !user.password) return null
+
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        )
+
+        if (!isPasswordValid) return null
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          image: user.image,
+        }
+      }
+    }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    GitHubProvider({
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    }),
+  ],
+  callbacks: {
+    session: ({ session, token }) => ({
+      ...session,
+      user: {
+        ...session.user,
+        id: token.id,
+        role: token.role,
+      }
+    }),
+    jwt: ({ token, user }) => {
+      if (user) {
+        const u = user as unknown as any
+        return {
+          ...token,
+          id: u.id,
+          role: u.role,
+        }
+      }
+      return token
+    },
+  },
+  pages: {
+    signIn: "/login",
+  },
+}
+
+// === UI COMPONENTS ===
+
+// components/ui/button.tsx
+import * as React from "react"
+import { cva, type VariantProps } from "class-variance-authority"
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, ...props }, ref) => {
+    return (
+      <button
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Button.displayName = "Button"
+
+export { Button, buttonVariants }
+
+// components/ui/card.tsx
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className
+    )}
+    {...props}
+  />
+))
+Card.displayName = "Card"
+
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    {...props}
+  />
+))
+CardHeader.displayName = "CardHeader"
+
+const CardTitle = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    className={cn(
+      "text-2xl font-semibold leading-none tracking-tight",
+      className
+    )}
+    {...props}
+  />
+))
+CardTitle.displayName = "CardTitle"
+
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+))
+CardContent.displayName = "CardContent"
+
+export { Card, CardHeader, CardTitle, CardContent }
+
+// components/ui/input.tsx
+export interface InputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Input.displayName = "Input"
+
+export { Input }
+
+// components/ui/label.tsx
+import { cva } from "class-variance-authority"
+
+const labelVariants = cva(
+  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+)
+
+const Label = React.forwardRef<
+  HTMLLabelElement,
+  React.LabelHTMLAttributes<HTMLLabelElement>
+>(({ className, ...props }, ref) => (
+  <label
+    ref={ref}
+    className={cn(labelVariants(), className)}
+    {...props}
+  />
+))
+Label.displayName = "Label"
+
+export { Label }
+
+// components/course-card.tsx
+interface CourseCardProps {
+  course: any
+  variant?: "student" | "instructor"
+}
+
+function CourseCard({ course, variant = "student" }: CourseCardProps) {
+  return (
+    <Card className="group cursor-pointer transition-all hover:shadow-lg">
+      <CardContent className="p-0">
+        <div className="aspect-video w-full bg-gradient-to-br from-primary/20 to-secondary/20 relative overflow-hidden">
+          {course.thumbnail ? (
+            <img
+              src={course.thumbnail}
+              alt={course.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <BookOpen className="w-12 h-12 text-primary" />
+            </div>
+          )}
+          {variant === "student" && course.progress !== undefined && (
+            <div className="absolute bottom-0 left-0 w-full bg-secondary/20">
+              <div
+                className="h-1 bg-secondary transition-all duration-300"
+                style={{ width: `${course.progress}%` }}
+              />
+            </div>
+          )}
+        </div>
+        
+        <div className="p-4">
+          <h3 className="font-semibold text-lg mb-2 line-clamp-2">
+            {course.title}
+          </h3>
+          <p className="text-muted-foreground text-sm line-clamp-2 mb-3">
+            {course.description}
+          </p>
+          
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            {variant === "instructor" ? (
+              <div className="flex items-center space-x-1">
+                <Users className="w-4 h-4" />
+                <span>{course.enrolledStudents || 0} students</span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-1">
+                <Clock className="w-4 h-4" />
+                <span>Updated {new Date(course.updatedAt).toLocaleDateString()}</span>
+              </div>
+            )}
+            
+            {course.price && course.price > 0 ? (
+              <span className="font-semibold text-primary">
+                ${course.price}
+              </span>
+            ) : (
+              <span className="font-semibold text-secondary">Free</span>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// components/dashboard-header.tsx
+interface DashboardHeaderProps {
+  heading: string
+  text?: string
+  children?: React.ReactNode
+}
+
+function DashboardHeader({ heading, text, children }: DashboardHeaderProps) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="grid gap-1">
+        <h1 className="text-3xl font-bold tracking-tight">{heading}</h1>
+        {text && <p className="text-muted-foreground">{text}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// components/dashboard-sidebar.tsx
+"use client"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { 
+  BookOpen, 
+  Home, 
+  Users, 
+  BarChart3, 
+  Settings,
+  GraduationCap 
+} from "lucide-react"
+
+const routes = [
+  {
+    label: "Dashboard",
+    icon: Home,
+    href: "/dashboard",
+    color: "text-primary",
+  },
+  {
+    label: "Courses",
+    icon: BookOpen,
+    href: "/dashboard/courses",
+    color: "text-secondary",
+  },
+  {
+    label: "Students",
+    icon: Users,
+    href: "/dashboard/students",
+    color: "text-green-500",
+  },
+  {
+    label: "Analytics",
+    icon: BarChart3,
+    href: "/dashboard/analytics",
+    color: "text-purple-500",
+  },
+  {
+    label: "Settings",
+    icon: Settings,
+    href: "/dashboard/settings",
+    color: "text-gray-500",
+  },
+]
+
+interface DashboardSidebarProps {
+  className?: string
+}
+
+function DashboardSidebar({ className }: DashboardSidebarProps) {
+  const pathname = usePathname()
+
+  return (
+    <div className={cn("pb-12", className)}>
+      <div className="space-y-4 py-4">
+        <div className="px-3 py-2">
+          <div className="flex items-center space-x-2 px-4 mb-6">
+            <GraduationCap className="w-8 h-8 text-primary" />
+            <h2 className="text-xl font-bold">EduFlow</h2>
+          </div>
+          <div className="space-y-1">
+            {routes.map((route) => (
+              <Button
+                key={route.href}
+                variant={pathname === route.href ? "secondary" : "ghost"}
+                className="w-full justify-start"
+                asChild
+              >
+                <Link href={route.href}>
+                  <route.icon className={cn("w-4 h-4 mr-2", route.color)} />
+                  {route.label}
+                </Link>
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// components/theme-provider.tsx
+"use client"
+import * as React from "react"
+import { ThemeProvider as NextThemesProvider } from "next-themes"
+import { type ThemeProviderProps } from "next-themes/dist/types"
+
+function ThemeProvider({ children, ...props }: ThemeProviderProps) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+}
+
+// components/session-provider.tsx
+"use client"
+import { SessionProvider as NextAuthSessionProvider } from "next-auth/react"
+
+interface SessionProviderProps {
+  children: React.ReactNode
+}
+
+function SessionProvider({ children }: SessionProviderProps) {
+  return (
+    <NextAuthSessionProvider>
+      {children}
+    </NextAuthSessionProvider>
+  )
+}
+
+// === STYLES ===
+
+// app/globals.css
+const globalStyles = `
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+ 
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+  }
+ 
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+`
+
+// === LAYOUT COMPONENTS ===
+
+// app/layout.tsx
+import { Inter } from 'next/font/google'
+
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata = {
+  title: 'EduFlow - Course Management System',
+  description: 'Modern course management platform for educators and students',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <SessionProvider>
+            {children}
+          </SessionProvider>
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+}
+
+// app/(dashboard)/layout.tsx
+function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen">
+      <DashboardSidebar className="hidden md:block w-64 flex-shrink-0" />
+      <main className="flex-1 overflow-auto">
+        {children}
+      </main>
+    </div>
+  )
+}
+
+// === PAGES ===
+
+// app/(auth)/login/page.tsx
+"use client"
+import { useState } from "react"
+import { signIn } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { Github, Google } from "lucide-react"
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        alert("Invalid credentials")
+      } else {
+        router.push("/dashboard")
+      }
+    } catch (error) {
+      alert("Login failed")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Welcome to EduFlow</CardTitle>
+          <p className="text-muted-foreground">Sign in to your account</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? "Signing in..." : "Sign in"}
+            </Button>
+          </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Button variant="outline" onClick={() => signIn("google")}>
+              <Google className="w-4 h-4 mr-2" />
+              Google
+            </Button>
+            <Button variant="outline" onClick={() => signIn("github")}>
+              <Github className="w-4 h-4 mr-2" />
+              GitHub
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// app/(dashboard)/dashboard/page.tsx
+import { getServerSession } from "next-auth"
+import { redirect } from "next/navigation"
+import { BookOpen, Users, BarChart3, Target } from "lucide-react"
+
+export default async function DashboardPage() {
+  const session = await getServerSession(authOptions)
+  
+  if (!session) {
+    redirect("/login")
+  }
+
+  let courses = []
+  let stats = {
+    totalCourses: 0,
+    totalStudents: 0,
+    enrolledCourses: 0,
+    averageProgress: 0
+  }
+
+  if (session.user.role === "STUDENT") {
+    const enrollments = await prisma.enrollment.findMany({
+      where: { userId: session.user.id },
+      include: { course: true }
+    })
+    
+    courses = enrollments.map(enrollment => ({
+      ...enrollment.course,
+      progress: enrollment.progress
+    }))
+    
+    stats.enrolledCourses = enrollments.length
+    stats.averageProgress = enrollments.length > 0 
+      ? enrollments.reduce((acc, curr) => acc + curr.progress, 0) / enrollments.length
+      : 0
+  } else if (session.user.role === "INSTRUCTOR") {
+    courses = await prisma.course.findMany({
+      where: { instructorId: session.user.id },
+      include: {
+        enrollments: true
+      }
+    })
+    
+    stats.totalCourses = courses.length
+    stats.totalStudents = courses.reduce((acc, course) => acc + course.enrollments.length, 0)
+  } else if (session.user.role === "ADMIN") {
+    courses = await prisma.course.findMany({
+      include: {
+        enrollments: true,
+        instructor: true
+      }
+    })
+    
+    stats.totalCourses = await prisma.course.count()
+    stats.totalStudents = await prisma.enrollment.count()
+  }
+
+  return (
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <DashboardHeader
+        heading="Dashboard"
+        description="Welcome to your learning management dashboard"
+      />
+      
+      {/* Stats Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalCourses}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {session.user.role === "STUDENT" ? "My Progress" : "Total Students"}
+            </CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {session.user.role === "STUDENT" 
+                ? `${Math.round(stats.averageProgress)}%` 
+                : stats.totalStudents
+              }
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Enrolled Courses</CardTitle>
+            <Target className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.enrolledCourses}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Performance</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {session.user.role === "STUDENT" ? "Good" : "Active"}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Courses Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {courses.map((course) => (
+          <CourseCard
+            key={course.id}
+            course={course}
+            variant={session.user.role === "STUDENT" ? "student" : "instructor"}
+          />
+        ))}
+      </div>
+
+      {courses.length === 0 && (
+        <div className="text-center py-12">
+          <BookOpen className="mx-auto h-12 w-12 text-muted-foreground" />
+          <h3 className="mt-4 text-lg font-semibold">No courses yet</h3>
+          <p className="text-muted-foreground">
+            {session.user.role === "STUDENT" 
+              ? "Enroll in your first course to get started!"
+              : "Create your first course to begin teaching!"
+            }
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// app/(dashboard)/dashboard/courses/[id]/page.tsx
+interface CoursePageProps {
+  params: {
+    id: string
+  }
+}
+
+export default async function CoursePage({ params }: CoursePageProps) {
+  const session = await getServerSession(authOptions)
+  
+  if (!session) {
+    redirect("/login")
+  }
+
+  const course = await prisma.course.findUnique({
+    where: { id: params.id },
+    include: {
+      instructor: true,
+      modules: {
+        include: {
+          lessons: true
+        },
+        orderBy: { order: 'asc' }
+      },
+      assignments: true,
+      enrollments: true
+    }
+  })
+
+  if (!course) {
+    redirect("/dashboard")
+  }
+
+  const isInstructor = session.user.role === "INSTRUCTOR" && course.instructorId === session.user.id
+  const isAdmin = session.user.role === "ADMIN"
+
+  if (!isInstructor && !isAdmin && session.user.role !== "STUDENT") {
+    redirect("/dashboard")
+  }
+
+  return (
+    <div className="flex-1 space-y-4 p-8 pt-6">
+      <DashboardHeader
+        heading={course.title}
+        text={course.description || undefined}
+      />
+      
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Modules</CardTitle>
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{course.modules.length}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Students</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{course.enrollments.length}</div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Assignments</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{course.assignments.length}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Course Modules</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {course.modules.length === 0 ? (
+              <p className="text-muted-foreground">No modules yet</p>
+            ) : (
+              <div className="space-y-4">
+                {course.modules.map((module) => (
+                  <div key={module.id} className="border rounded-lg p-4">
+                    <h4 className="font-semibold">{module.title}</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {module.lessons.length} lessons
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Assignments</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {course.assignments.length === 0 ? (
+              <p className="text-muted-foreground">No assignments yet</p>
+            ) : (
+              <div className="space-y-4">
+                {course.assignments.map((assignment) => (
+                  <div key={assignment.id} className="border rounded-lg p-4">
+                    <h4 className="font-semibold">{assignment.title}</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Due: {assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : 'No due date'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+// === API ROUTES ===
+
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from "next-auth"
+
+const handler = NextAuth(authOptions)
+
+export { handler as GET, handler as POST }
+
+// app/api/courses/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+  
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  try {
+    let courses = []
+    
+    if (session.user.role === "STUDENT") {
+      const enrollments = await prisma.enrollment.findMany({
+        where: { userId: session.user.id },
+        include: { course: true }
+      })
+      courses = enrollments.map(enrollment => enrollment.course)
+    } else if (session.user.role === "INSTRUCTOR") {
+      courses = await prisma.course.findMany({
+        where: { instructorId: session.user.id }
+      })
+    } else if (session.user.role === "ADMIN") {
+      courses = await prisma.course.findMany({
+        include: { instructor: true }
+      })
+    }
+
+    return NextResponse.json(courses)
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to fetch courses" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+  
+  if (!session || session.user.role !== "INSTRUCTOR") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  try {
+    const body = await request.json()
+    const { title, description, price } = body
+
+    const course = await prisma.course.create({
+      data: {
+        title,
+        description,
+        price: price ? parseFloat(price) : 0,
+        instructorId: session.user.id,
+      }
+    })
+
+    return NextResponse.json(course)
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to create course" },
+      { status: 500 }
+    )
+  }
+}
+
+// === ICON IMPORTS ===
+import { BookOpen, Users, Clock, FileText } from "lucide-react"
+
+// Export all components for proper tree-shaking
+export {
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Input,
+  Label,
+  CourseCard,
+  DashboardHeader,
+  DashboardSidebar,
+  ThemeProvider,
+  SessionProvider,
+  DashboardLayout,
+  LoginPage,
+  DashboardPage,
+  CoursePage
+}
+
+// This file contains the complete EduFlow Course Management System
+// To use this code, you would need to split it into the appropriate file structure
+// and run the necessary setup commands:
+// 1. npm install
+// 2. Set up environment variables
+// 3. npx prisma generate
+// 4. npx prisma db push
+// 5. npm run dev
